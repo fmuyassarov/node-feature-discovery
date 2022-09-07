@@ -4,7 +4,7 @@ layout: default
 sort: 2
 ---
 
-# Quick start
+# Quick start. Hello World
 
 Minimal steps to deploy latest released version of NFD in your cluster.
 

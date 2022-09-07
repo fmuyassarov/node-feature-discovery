@@ -19,7 +19,7 @@ sort: 3
 
 NFD currently offers two variants of the container image. The "full" variant is
 currently deployed by default. Released container images are available for
-x86_64 and Arm64 architectures.
+x86_64 and Arm64 architectures.!
 
 ### Full
 
