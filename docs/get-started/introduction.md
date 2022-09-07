@@ -21,7 +21,7 @@ advertises those features using node labels.
 
 NFD consists of three software components:
 
-1. nfd-master
+1. nfd-master.
 1. nfd-worker
 1. nfd-topology-updater
 
