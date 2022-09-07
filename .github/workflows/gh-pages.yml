@@ -1,13 +1,7 @@
 name: gh-pages
 on:
-  push:
-    branches:
-      - master
-      - release-*
-    tags:
-      - v[0-9]+.[0-9]+.[0-9]+
-  release:
-    types: [published]
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
 jobs:
   build:
     name: Update gh-pages
