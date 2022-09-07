@@ -1,0 +1,30 @@
+# .github/workflows/preview.yml
+name: Deploy PR previews
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - closed
+
+# concurrency: preview-${{ github.ref }}
+
+jobs:
+  deploy-preview:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: install docker
+        uses: docker-practice/actions-setup-docker@master
+      - name: Install dependencies
+        run: |
+          sudo apt-get install -y jq curl
+          curl -sfL https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash -s -- --version v3.5.2
+        
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: serve the site
+        run: |
+          make site-serve
