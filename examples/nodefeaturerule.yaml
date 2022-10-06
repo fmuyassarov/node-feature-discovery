@@ -7,6 +7,14 @@ spec:
     - name: "my sample rule"
       labels:
         "my-sample-feature": "true"
+# Using tainting feature requires the feature gate (--allowTainting) to be enabled
+      taints:
+        - effect: PreferNoSchedule
+          key: bar
+          value: "true"
+        - effect: NoExecute
+          key: foo
+          value: "true"
       matchFeatures:
         - feature: kernel.loadedmodule
           matchExpressions:
