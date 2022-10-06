@@ -141,7 +141,7 @@ func (r *CustomRule) execute(features *nfdv1alpha1.Features) (nfdv1alpha1.RuleOu
 	}
 
 	if r.Rule != nil {
-		ruleOut, err := r.Rule.Execute(features)
+		_, _, ruleOut, err := r.Rule.Execute(features)
 		if err != nil {
 			return ruleOut, fmt.Errorf("failed to execute rule %s: %w", r.Rule.Name, err)
 		}

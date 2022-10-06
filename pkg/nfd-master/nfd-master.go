@@ -43,6 +43,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
+	taintutils "k8s.io/kubernetes/pkg/util/taints"
 
 	"sigs.k8s.io/node-feature-discovery/pkg/apihelper"
 	nfdv1alpha1 "sigs.k8s.io/node-feature-discovery/pkg/apis/nfd/v1alpha1"
@@ -72,6 +73,7 @@ type Args struct {
 	LabelWhiteList         utils.RegexpVal
 	FeatureRulesController bool
 	NoPublish              bool
+	EnableTaints           bool
 	Port                   int
 	Prune                  bool
 	VerifyNodeName         bool
@@ -392,7 +394,7 @@ func verifyNodeName(cert *x509.Certificate, nodeName string) error {
 
 	err := cert.VerifyHostname(nodeName)
 	if err != nil {
-		return fmt.Errorf("Certificate %q not valid for node %q: %v", cert.Subject.CommonName, nodeName, err)
+		return fmt.Errorf("certificate %q not valid for node %q: %v", cert.Subject.CommonName, nodeName, err)
 	}
 	return nil
 }
@@ -420,7 +422,8 @@ func (m *nfdMaster) SetLabels(c context.Context, r *pb.SetLabelsRequest) (*pb.Se
 		// NOTE: we effectively mangle the request struct by not creating a deep copy of the map
 		rawLabels = r.Labels
 	}
-	for k, v := range m.crLabels(r) {
+	crLabels, mustTaint := m.crLabels(r)
+	for k, v := range crLabels {
 		rawLabels[k] = v
 	}
 
@@ -440,6 +443,74 @@ func (m *nfdMaster) SetLabels(c context.Context, r *pb.SetLabelsRequest) (*pb.Se
 			klog.Errorf("failed to advertise labels: %v", err)
 			return &pb.SetLabelsReply{}, err
 		}
+		if !m.args.NoTaint {
+			// Set NodeFeatureRule provided taints
+			if mustTaint {
+				klog.Infof("nfd tainting feature is enabled")
+				labelReply, err := m.SetTaints(c, r)
+				if err != nil {
+					return labelReply, err
+				}
+			}
+		}
+	}
+	return &pb.SetLabelsReply{}, nil
+}
+
+// SetTaints sets taint(s) on the node matching rule(s) in the NodeFeatureRule CRD
+func (m *nfdMaster) SetTaints(c context.Context, r *pb.SetLabelsRequest) (*pb.SetLabelsReply, error) {
+	err := authorizeClient(c, m.args.VerifyNodeName, r.NodeName)
+	taints := []corev1.Taint{}
+
+	if err != nil {
+		return &pb.SetLabelsReply{}, err
+	}
+
+	klog.Infof("received tainting request for node %q", r.NodeName)
+
+	nfrs, err := m.nfdController.ruleLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list NodeFeatureRule resources: %v", err)
+		return &pb.SetLabelsReply{}, err
+	}
+
+	sort.Slice(nfrs, func(i, j int) bool {
+		return nfrs[i].Name < nfrs[j].Name
+	})
+
+	cli, err := m.apihelper.GetClient()
+	if err != nil {
+		return &pb.SetLabelsReply{}, err
+	}
+
+	// fetch the node object
+	node, err := m.apihelper.GetNode(cli, r.NodeName)
+	if err != nil {
+		return &pb.SetLabelsReply{}, err
+	}
+
+	if !m.args.NoPublish {
+
+		// check if the taint already exists
+		nodeTaints := node.Spec.Taints
+
+		for _, nfr := range nfrs {
+			for _, rule := range nfr.Spec.Rules {
+				for _, crTaint := range rule.Taints {
+					if !taintutils.TaintExists(nodeTaints, &crTaint) {
+						taints = append(taints, crTaint)
+					}
+				}
+			}
+		}
+		node.Spec.Taints = append(node.Spec.Taints, taints...)
+
+		// Update the node
+		err = m.apihelper.UpdateNode(cli, node)
+		if err != nil {
+			return &pb.SetLabelsReply{}, fmt.Errorf("failed to taint the node %q: %v", node.Name, err)
+		}
+
 	}
 	return &pb.SetLabelsReply{}, nil
 }
@@ -493,9 +564,11 @@ func (m *nfdMaster) UpdateNodeTopology(c context.Context, r *topologypb.NodeTopo
 	return &topologypb.NodeTopologyResponse{}, nil
 }
 
-func (m *nfdMaster) crLabels(r *pb.SetLabelsRequest) map[string]string {
+func (m *nfdMaster) crLabels(r *pb.SetLabelsRequest) (map[string]string, bool) {
+	var setTaint bool
+
 	if m.nfdController == nil {
-		return nil
+		return nil, false
 	}
 
 	l := make(map[string]string)
@@ -506,7 +579,7 @@ func (m *nfdMaster) crLabels(r *pb.SetLabelsRequest) map[string]string {
 
 	if err != nil {
 		klog.Errorf("failed to list NodeFeatureRule resources: %v", err)
-		return nil
+		return nil, false
 	}
 
 	// Helper struct for rule processing
@@ -522,10 +595,14 @@ func (m *nfdMaster) crLabels(r *pb.SetLabelsRequest) map[string]string {
 			klog.Infof("executing NodeFeatureRule %q", spec.ObjectMeta.Name)
 		}
 		for _, rule := range spec.Spec.Rules {
-			ruleOut, err := rule.Execute(features)
+			featureMatched, anyMatched, ruleOut, err := rule.Execute(features)
 			if err != nil {
 				klog.Errorf("failed to process Rule %q: %v", rule.Name, err)
 				continue
+			}
+
+			if featureMatched || anyMatched {
+				setTaint = true
 			}
 
 			for k, v := range ruleOut.Labels {
@@ -538,7 +615,7 @@ func (m *nfdMaster) crLabels(r *pb.SetLabelsRequest) map[string]string {
 		}
 	}
 
-	return l
+	return l, setTaint
 }
 
 // updateNodeFeatures ensures the Kubernetes node object is up to date,
