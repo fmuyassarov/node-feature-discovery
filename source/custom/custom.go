@@ -141,7 +141,10 @@ func (r *CustomRule) execute(features *nfdv1alpha1.Features) (nfdv1alpha1.RuleOu
 	}
 
 	if r.Rule != nil {
-		_, _, ruleOut, err := r.Rule.Execute(features)
+		ruleOut, err := r.Rule.Execute(features)
+		if len(ruleOut.Taints) > 0 {
+			klog.Warning("tainting is not supported by the nfd-worker configuration")
+		}
 		if err != nil {
 			return ruleOut, fmt.Errorf("failed to execute rule %s: %w", r.Rule.Name, err)
 		}

@@ -22,8 +22,8 @@ import (
 	"strings"
 	"text/template"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
-
 	"sigs.k8s.io/node-feature-discovery/pkg/utils"
 )
 
@@ -32,21 +32,20 @@ import (
 type RuleOutput struct {
 	Labels map[string]string
 	Vars   map[string]string
+	Taints []corev1.Taint
 }
 
 // Execute the rule against a set of input features.
-func (r *Rule) Execute(features *Features) (bool, bool, RuleOutput, error) {
+func (r *Rule) Execute(features *Features) (RuleOutput, error) {
 	labels := make(map[string]string)
 	vars := make(map[string]string)
-
-	var anyMatched, featureMatched bool
 
 	if len(r.MatchAny) > 0 {
 		// Logical OR over the matchAny matchers
 		matched := false
 		for _, matcher := range r.MatchAny {
 			if isMatch, matches, err := matcher.match(features); err != nil {
-				return false, false, RuleOutput{}, err
+				return RuleOutput{}, err
 			} else if isMatch {
 				matched = true
 				utils.KlogDump(4, "matches for matchAny "+r.Name, "  ", matches)
@@ -59,35 +58,33 @@ func (r *Rule) Execute(features *Features) (bool, bool, RuleOutput, error) {
 				}
 
 				if err := r.executeLabelsTemplate(matches, labels); err != nil {
-					return false, false, RuleOutput{}, err
+					return RuleOutput{}, err
 				}
 				if err := r.executeVarsTemplate(matches, vars); err != nil {
-					return false, false, RuleOutput{}, err
+					return RuleOutput{}, err
 				}
-				anyMatched = true
 			}
 		}
 		if !matched {
 			klog.V(2).Infof("rule %q did not match", r.Name)
-			return false, false, RuleOutput{}, nil
+			return RuleOutput{}, nil
 		}
 	}
 
 	if len(r.MatchFeatures) > 0 {
 		if isMatch, matches, err := r.MatchFeatures.match(features); err != nil {
-			return false, false, RuleOutput{}, err
+			return RuleOutput{}, err
 		} else if !isMatch {
 			klog.V(2).Infof("rule %q did not match", r.Name)
-			return false, false, RuleOutput{}, nil
+			return RuleOutput{}, nil
 		} else {
 			utils.KlogDump(4, "matches for matchFeatures "+r.Name, "  ", matches)
 			if err := r.executeLabelsTemplate(matches, labels); err != nil {
-				return false, false, RuleOutput{}, err
+				return RuleOutput{}, err
 			}
 			if err := r.executeVarsTemplate(matches, vars); err != nil {
-				return false, false, RuleOutput{}, err
+				return RuleOutput{}, err
 			}
-			featureMatched = true
 		}
 	}
 
@@ -98,10 +95,9 @@ func (r *Rule) Execute(features *Features) (bool, bool, RuleOutput, error) {
 		vars[k] = v
 	}
 
-	ret := RuleOutput{Labels: labels, Vars: vars}
+	ret := RuleOutput{Labels: labels, Vars: vars, Taints: r.Taints}
 	utils.KlogDump(2, fmt.Sprintf("rule %q matched with: ", r.Name), "  ", ret)
-
-	return anyMatched, featureMatched, ret, nil
+	return ret, nil
 }
 
 func (r *Rule) executeLabelsTemplate(in matchedFeatures, out map[string]string) error {

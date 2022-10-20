@@ -105,11 +105,6 @@ The `-enable-taints` flag enables/disables node tainting feature of NFD.
 
 Default: *false*
 
-NOTE: After NFD sets a taint, already running pods that do not tolerate the taint
-are evicted immediately from the node including the nfd-worker pod. To allow scheduling
-nfd-worker pods onto the node where they were running before, customization of the
-nfd-worker daemonset with corresponding tolerations is required.
-
 Example:
 
 ```bash

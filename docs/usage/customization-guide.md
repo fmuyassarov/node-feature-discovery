@@ -79,7 +79,7 @@ re-labeling delay up to the sleep-interval of nfd-worker (1 minute by default).
 This feature is experimental.
 
 In some circumstances it is desirable keep nodes with specialized hardware away from
-running general workload and instead leave them for pods that need the specialized
+running general workload and instead leave them for workloads that need the specialized
 hardware. One way to achieve it is to taint the nodes with the specialized hardware
 and add corresponding toleration to pods that require the special hardware. NFD
 offers node tainting functionality which is disabled by default. User can define
@@ -90,10 +90,38 @@ To enable the tainting feature, `--enable-taints` flag needs to be set to `true`
 If the flag `--enable-taints` is set to `false` (i.e. disabled), taints defined in
 the NodeFeatureRule CR have no effect and will be ignored by the NFD master.
 
-**NOTE**: After NFD sets a taint, already running pods that do not tolerate the taint
-are evicted immediately from the node including the nfd-worker pod. To allow scheduling
-nfd-worker pods onto the node where they were running before, customization of the
-nfd-worker daemonset with corresponding tolerations is required.
+**NOTE**: Before enabling any taints, make sure to edit nfd-worker daemonset to
+tolerate the taints to be created. Otherwise, already running pods that do not
+tolerate the taint are evicted immediately from the node including the nfd-worker
+pod.
+
+Example NodeFeatureRule with custom taints:
+
+```yaml
+apiVersion: nfd.k8s-sigs.io/v1alpha1
+kind: NodeFeatureRule
+metadata:
+  name: my-sample-rule-object
+spec:
+  rules:
+    - name: "my sample taint rule"
+      taints:
+        - effect: PreferNoSchedule
+          key: "feature.node.kubernetes.io/special-node"
+          value: "true"
+        - effect: NoExecute
+          key: "feature.node.kubernetes.io/dedicated-node"
+      matchFeatures:
+        - feature: kernel.loadedmodule
+          matchExpressions:
+            dummy: {op: Exists}
+        - feature: kernel.config
+          matchExpressions:
+            X86: {op: In, value: ["y"]}
+```
+
+In this example, if the `my sample taint rule` rule is matched, `feature.node.kubernetes.io/pci-0300_1d0f.present=true:NoExecute`
+and `feature.node.kubernetes.io/cpu-cpuid.ADX:NoExecute` taints are set on the node.
 
 ### NodeFeatureRule controller
 
@@ -391,34 +419,6 @@ or `NoExecute`. To learn more about the meaning of these effects, check out k8s 
 
 **NOTE** taints field is not available for the custom rules of nfd-worker and only
 for NodeFeatureRule objects.
-
-Example NodeFeatureRule with custom taints:
-
-```yaml
-apiVersion: nfd.k8s-sigs.io/v1alpha1
-kind: NodeFeatureRule
-metadata:
-  name: my-sample-rule-object
-spec:
-  rules:
-    - name: "my sample taint rule"
-      taints:
-        - effect: PreferNoSchedule
-          key: "feature.node.kubernetes.io/special-node"
-          value: "true"
-        - effect: NoExecute
-          key: "feature.node.kubernetes.io/dedicated-node"
-      matchFeatures:
-        - feature: kernel.loadedmodule
-          matchExpressions:
-            dummy: {op: Exists}
-        - feature: kernel.config
-          matchExpressions:
-            X86: {op: In, value: ["y"]}
-```
-
-In this example, if the `my sample taint rule` rule is matched, `feature.node.kubernetes.io/pci-0300_1d0f.present=true:NoExecute`
-and `feature.node.kubernetes.io/cpu-cpuid.ADX:NoExecute` taints are set on the node.
 
 #### Vars
 
