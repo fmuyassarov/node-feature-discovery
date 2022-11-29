@@ -480,17 +480,13 @@ func (m *nfdMaster) setTaints(cli *kubernetes.Clientset, taints []corev1.Taint, 
 	}
 
 	// De-serialize the taints annotation into Taint type for comparision below.
-	annotations := node.GetAnnotations()
-	oldAnnotation := node.DeepCopy().GetAnnotations()
-	// Keep the backup of old annotation.
 	oldTaints := []corev1.Taint{}
-	if val, ok := annotations[nfdv1alpha1.NodeTaintsAnnotation]; ok {
+	if val, ok := node.Annotations[nfdv1alpha1.NodeTaintsAnnotation]; ok {
 		sts := strings.Split(val, ",")
-		corev1Taints, _, err := taintutils.ParseTaints(sts)
+		oldTaints, _, err = taintutils.ParseTaints(sts)
 		if err != nil {
 			return err
 		}
-		oldTaints = corev1Taints
 	}
 
 	// Find out the diff between the old (from taints annotation) and
@@ -506,52 +502,54 @@ func (m *nfdMaster) setTaints(cli *kubernetes.Clientset, taints []corev1.Taint, 
 	// We have taintsToRemove that we found from the annotation and here
 	// we first check if the taints still exist on the node and if yes
 	// remove it, otherwise move on.
+	taintsUpdated := false
 	newNode := node.DeepCopy()
 	for _, taintToRemove := range taintsToRemove {
 		newTaints, removed := taintutils.DeleteTaint(newNode.Spec.Taints, &taintToRemove)
 		if !removed {
 			klog.V(1).Infof("taint %q already deleted from node", taintToRemove.ToString())
 		}
+		taintsUpdated = taintsUpdated || removed
 		newNode.Spec.Taints = newTaints
 	}
 
 	// Add new taints
 	for _, taint := range taints {
-		curNewNode, _, err := taintutils.AddOrUpdateTaint(newNode, &taint)
+		var updated bool
+		newNode, updated, err = taintutils.AddOrUpdateTaint(newNode, &taint)
 		if err != nil {
 			return fmt.Errorf("failed to add %q taint on node %v", taint, node.Name)
 		}
-		newNode = curNewNode
-		continue
-	}
-	err = controller.PatchNodeTaints(context.TODO(), cli, nodeName, node, newNode)
-	if err != nil {
-		return fmt.Errorf("failed to patch the node %v", node.Name)
-	}
-	klog.Infof("updated node %q taints", nodeName)
-
-	// Serialize the new taints into string and update the annotation
-	// with that string.
-	taintStrs := make([]string, 0, len(taints))
-	for _, taint := range taints {
-		taintStrs = append(taintStrs, taint.ToString())
+		taintsUpdated = taintsUpdated || updated
 	}
 
-	if len(taints) > 0 {
-		annotations[nfdv1alpha1.NodeTaintsAnnotation] = strings.Join(taintStrs, ",")
-	} else {
-		delete(annotations, nfdv1alpha1.NodeTaintsAnnotation)
-	}
-
-	if !(oldAnnotation[nfdv1alpha1.NodeTaintsAnnotation] == annotations[nfdv1alpha1.NodeTaintsAnnotation]) {
-		node.SetAnnotations(annotations)
-		patches := createPatches([]string{nfdv1alpha1.NodeTaintsAnnotation}, oldAnnotation, annotations, "/metadata/annotations")
-		klog.Info(patches)
-		err = m.apihelper.PatchNode(cli, node.Name, patches)
+	if taintsUpdated {
+		err = controller.PatchNodeTaints(context.TODO(), cli, nodeName, node, newNode)
 		if err != nil {
-			return fmt.Errorf("error while patching node object: %v", err)
+			return fmt.Errorf("failed to patch the node %v", node.Name)
 		}
+		klog.Infof("updated node %q taints", nodeName)
 	}
+
+	// Update node annotation that holds the taints managed by us
+	newAnnotations := map[string]string{}
+	if len(taints) > 0 {
+		// Serialize the new taints into string and update the annotation
+		// with that string.
+		taintStrs := make([]string, 0, len(taints))
+		for _, taint := range taints {
+			taintStrs = append(taintStrs, taint.ToString())
+		}
+		newAnnotations[nfdv1alpha1.NodeTaintsAnnotation] = strings.Join(taintStrs, ",")
+	}
+
+	patches := createPatches([]string{nfdv1alpha1.NodeTaintsAnnotation}, node.Annotations, newAnnotations, "/metadata/annotations")
+	err = m.apihelper.PatchNode(cli, node.Name, patches)
+	if err != nil {
+		return fmt.Errorf("error while patching node object: %v", err)
+	}
+	klog.V(1).Infof("patched node %q annotations for taints", nodeName)
+
 	return nil
 }
 
