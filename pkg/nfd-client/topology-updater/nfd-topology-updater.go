@@ -147,9 +147,17 @@ func (w *nfdTopologyUpdater) Run() error {
 			zones = resAggr.Aggregate(podResources)
 			utils.KlogDump(1, "After aggregating resources identified zones are", "  ", zones)
 			if !w.args.NoPublish {
+
+				// ######### NRI-RM ###############
+
+				// zones variable should be getting data from the NRI-RM instead of from line 147.
+				// Once we have it it will be passed as an argument to updateNodeResourceTopology
+				// method, which in turn creates NodeResourceTopology CR with the same name as node
+				// name + zones data is copied to the NodeResourceTopology's zones field as in line195.
 				if err = w.updateNodeResourceTopology(zones); err != nil {
 					return err
 				}
+				// ######### NRI-RM ###############
 			}
 
 			if w.args.Oneshot {
