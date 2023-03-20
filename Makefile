@@ -179,6 +179,7 @@ helm-lint:
 
 test:
 	$(GO_CMD) test -covermode=atomic -coverprofile=coverage.out ./cmd/... ./pkg/... ./source/...
+	bash <(curl -s https://codecov.io/bash) -t 9a4269e-70f1-47a5-a42e-7f003337e979
 
 e2e-test:
 	@if [ -z ${KUBECONFIG} ]; then echo "[ERR] KUBECONFIG missing, must be defined"; exit 1; fi
