@@ -1,6 +1,8 @@
 .PHONY: all test templates yamls
 .FORCE:
 
+SHELL := /bin/bash
+
 GO_CMD ?= go
 GO_FMT ?= gofmt
 
@@ -179,7 +181,6 @@ helm-lint:
 
 test:
 	$(GO_CMD) test -covermode=atomic -coverprofile=coverage.out ./cmd/... ./pkg/... ./source/...
-	bash <(curl -s https://codecov.io/bash) -t 9a4269e-70f1-47a5-a42e-7f003337e979
 
 e2e-test:
 	@if [ -z ${KUBECONFIG} ]; then echo "[ERR] KUBECONFIG missing, must be defined"; exit 1; fi
@@ -232,3 +233,6 @@ site-build:
 site-serve:
 	@mkdir -p docs/vendor/bundle
 	$(SITE_BUILD_CMD) sh -c "bundle install && jekyll serve $(JEKYLL_OPTS) -H 127.0.0.1"
+
+upload:
+	./scripts/test-infra/upload.sh
