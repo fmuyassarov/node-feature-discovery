@@ -177,8 +177,15 @@ mdlint:
 helm-lint:
 	helm lint --strict deployment/helm/node-feature-discovery/
 
+UPLOAD_REPORT = true
 test:
 	$(GO_CMD) test -covermode=atomic -coverprofile=coverage.out ./cmd/... ./pkg/... ./source/...
+	@if [ -n ${UPLOAD_REPORT} ] && [ ${UPLOAD_REPORT} = true ]; then \
+		curl -Os https://uploader.codecov.io/latest/linux/codecov; \
+		chmod +x codecov; \
+		CODECOV_TOKEN=09a4269e-70f1-47a5-a42e-7f003337e979; \
+		./codecov -t ${CODECOV_TOKEN}; \
+	fi
 
 e2e-test:
 	@if [ -z ${KUBECONFIG} ]; then echo "[ERR] KUBECONFIG missing, must be defined"; exit 1; fi
