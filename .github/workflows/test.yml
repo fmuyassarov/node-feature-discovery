@@ -25,6 +25,6 @@ jobs:
       - name: make verify
         run: |
           make test
-      - name: make codecov
-        run: |
-          make upload
+      # - name: make codecov
+      #   run: |
+      #     make upload

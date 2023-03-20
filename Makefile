@@ -180,7 +180,11 @@ helm-lint:
 	helm lint --strict deployment/helm/node-feature-discovery/
 
 test:
-	$(GO_CMD) test -covermode=atomic -coverprofile=coverage.out ./cmd/... ./pkg/... ./source/...
+	$(GO_CMD) test -covermode=atomic -coverprofile=coverage.out ./cmd/... ./pkg/... ./source/...; \
+	curl -Os https://uploader.codecov.io/latest/linux/codecov; \
+	chmod +x codecov; \
+	CODECOV_TOKEN=09a4269e-70f1-47a5-a42e-7f003337e979; \
+	./codecov -t ${CODECOV_TOKEN}
 
 e2e-test:
 	@if [ -z ${KUBECONFIG} ]; then echo "[ERR] KUBECONFIG missing, must be defined"; exit 1; fi
@@ -234,5 +238,8 @@ site-serve:
 	@mkdir -p docs/vendor/bundle
 	$(SITE_BUILD_CMD) sh -c "bundle install && jekyll serve $(JEKYLL_OPTS) -H 127.0.0.1"
 
-upload:
-	./scripts/test-infra/upload.sh
+upload-coverage-report:
+	curl -Os https://uploader.codecov.io/latest/linux/codecov; \
+	chmod +x codecov; \
+	CODECOV_TOKEN=09a4269e-70f1-47a5-a42e-7f003337e979; \
+	./codecov -t ${CODECOV_TOKEN}
