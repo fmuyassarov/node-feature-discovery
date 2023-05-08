@@ -38,5 +38,3 @@ $ kubectl get no -o json | jq .items[].metadata.labels
 ...
 
 ```
-
-[documentation]: https://kubernetes-sigs.github.io/node-feature-discovery
