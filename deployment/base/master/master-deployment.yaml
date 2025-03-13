@@ -39,6 +39,8 @@ spec:
             failureThreshold: 10
           command:
             - "nfd-master"
+          args:
+            - "-feature-gates=DisableAutoPrefix=true"
           ports:
             - name: http
               containerPort: 8080
